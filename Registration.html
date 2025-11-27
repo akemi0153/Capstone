@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IGP SmartStock - Registration</title>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{
+      font-family:"Poppins",sans-serif;
+      background:url("background.jpg") no-repeat center center fixed;
+      background-size:cover;
+      height:100vh;
+      display:flex;
+      align-items:flex-start;
+      justify-content:flex-start;
+      padding-top:270px;
+      padding-left:220px;
+      position:relative;
+    }
+    .overlay{
+      position:absolute;
+      top:0;left:0;width:100%;height:100%;
+      background:rgba(255,255,255,0.3);z-index:0;
+    }
+    .register-box{
+      position:relative;z-index:1;
+      width:450px;background:rgba(255,255,255,0.9);
+      border-radius:12px;padding:40px;
+      box-shadow:0 8px 20px rgba(0,0,0,0.2);
+      border:2px solid #FFD700;
+    }
+    .brand-header{display:flex;align-items:center;gap:10px;margin-bottom:15px;}
+    .logo{width:65px;height:65px;object-fit:contain;border-radius:10px;}
+    .brand-header h1{color:#e6b800;font-size:32px;margin:0;}
+    h3{color:#333;margin-bottom:20px;font-weight:normal;}
+    label{display:block;margin-bottom:5px;font-size:14px;color:#333;}
+    input,select{
+      width:100%;padding:10px;margin-bottom:15px;
+      border:1px solid #ccc;border-radius:6px;font-size:15px;
+    }
+    input:focus,select:focus{border-color:#FFD700;box-shadow:0 0 5px #FFD700;outline:none;}
+    .btn{
+      width:100%;padding:12px;background:#FFD700;color:#000;
+      border:none;border-radius:6px;font-weight:bold;cursor:pointer;
+      transition:background .3s;
+    }
+    .btn:hover{background:#e6c200;}
+    .btn-secondary{background:#ccc;color:#000;}
+    .btn-secondary:hover{background:#bbb;}
+    .step{display:none;}
+    .step.active{display:block;}
+    p{text-align:left;margin-top:15px;font-size:13px;}
+    p a{color:#e6b800;text-decoration:none;}
+    p a:hover{text-decoration:underline;}
+  </style>
+</head>
+<body>
+  <div class="overlay"></div>
+
+  <div class="register-box">
+    <div class="brand-header">
+      <img src="logo.png" alt="IGP SmartStock Logo" class="logo">
+      <h1>IGP SmartStock</h1>
+    </div>
+    <h3>Create your account to start managing your inventory and records.</h3>
+
+    <form id="registerForm">
+      <!-- STEP 1 -->
+      <div class="step active" id="step1">
+        <label>Full Name</label>
+        <input type="text" id="full_name" required>
+
+        <label>Age</label>
+        <input type="number" id="age" required>
+
+        <label>Office / Unit</label>
+        <input type="text" id="office_unit" required>
+
+        <label>Teaching / Non-Teaching</label>
+        <select id="position" required>
+          <option value="">Select</option>
+          <option value="Teaching">Teaching</option>
+          <option value="Non-Teaching">Non-Teaching</option>
+        </select>
+
+        <button type="button" class="btn" id="next1">Next</button>
+      </div>
+
+      <!-- STEP 2 -->
+      <div class="step" id="step2">
+        <label>Birthday</label>
+        <input type="date" id="birthday" required>
+
+        <label>Contact Details</label>
+        <input type="text" id="contact" placeholder="09XXXXXXXXX" required>
+
+        <label>Email Address</label>
+        <input type="email" id="email" required>
+
+        <label>Password</label>
+        <input type="password" id="password" required>
+
+        <button type="button" class="btn-secondary btn" id="back1">Back</button>
+        <button type="submit" class="btn">Create Account</button>
+      </div>
+    </form>
+
+    <p>Already have an account? <a href="Log In.html">Sign in here</a></p>
+  </div>
+
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+    import { SUPABASE_CONFIG } from "./config/credentials.js";
+
+    const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+
+    // Navigation between steps
+    const step1 = document.getElementById("step1");
+    const step2 = document.getElementById("step2");
+
+    document.getElementById("next1").addEventListener("click", () => {
+      const full_name = document.getElementById("full_name").value.trim();
+      const age = document.getElementById("age").value;
+      const office_unit = document.getElementById("office_unit").value.trim();
+      const position = document.getElementById("position").value;
+
+      if (!full_name || !age || !office_unit || !position) {
+        Swal.fire({ icon: "warning", title: "Incomplete", text: "Please fill all fields.", confirmButtonColor: "#FFD700" });
+        return;
+      }
+      step1.classList.remove("active");
+      step2.classList.add("active");
+    });
+
+    document.getElementById("back1").addEventListener("click", () => {
+      step2.classList.remove("active");
+      step1.classList.add("active");
+    });
+
+    // Handle registration (Step 2 Submit)
+    const form = document.getElementById("registerForm");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const full_name = document.getElementById("full_name").value.trim();
+      const age = document.getElementById("age").value;
+      const office_unit = document.getElementById("office_unit").value.trim();
+      const position = document.getElementById("position").value;
+      const birthday = document.getElementById("birthday").value;
+      const contact = document.getElementById("contact").value.trim();
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      // Show loading
+      Swal.fire({
+        title: 'Creating Account...',
+        text: 'Please wait while we process your registration.',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      // Register user with Supabase Authentication
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name,
+            age: parseInt(age),
+            office_unit,
+            position,
+            birthday,
+            contact
+          },
+          emailRedirectTo: window.location.origin + '/main.html'
+        }
+      });
+
+      Swal.close();
+      if (error) {
+        Swal.fire({ 
+          icon: "error", 
+          title: "Registration Failed", 
+          text: error.message, 
+          confirmButtonColor: "#FFD700" 
+        });
+      } else {
+        Swal.fire({
+          icon: 'success',
+          title: 'Registration Complete!',
+          text: 'Your account has been created successfully. You can now log in.',
+          confirmButtonColor: '#FFD700',
+          confirmButtonText: 'Go to Login'
+        }).then(() => {
+          window.location.href = 'Log In.html';
+        });
+      }
+    });
+  </script>
+</body>
+</html>

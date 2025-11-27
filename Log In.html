@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>IGP SmartStock - Login</title>
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Poppins", sans-serif;
+      background: url("background.jpg") no-repeat center center fixed;
+      background-size: cover;
+      height: 100vh;
+      color: #222;
+      display: flex;
+      justify-content: flex-start;
+      align-items: flex-start;
+      position: relative;
+      padding-top: 280px;
+      padding-left: 230px;
+    }
+
+    /* Soft white overlay for readability */
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 255, 255, 0.3);
+      z-index: 0;
+    }
+
+    /* Login container */
+    .login-side {
+      position: relative;
+      z-index: 1;
+      width: 420px;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 12px;
+      padding: 40px 35px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+      border: 2px solid #FFD700;
+      text-align: left;
+    }
+
+    /* Logo + Title */
+    .brand-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .logo {
+      width: 70px;
+      height: 70px;
+      object-fit: contain;
+      border-radius: 10px;
+    }
+
+    .brand-header h1 {
+      color: #e6b800;
+      font-size: 36px;
+      margin: 0;
+    }
+
+    h3 {
+      color: #333;
+      font-weight: normal;
+      margin-bottom: 25px;
+      font-size: 15px;
+      line-height: 1.4;
+    }
+
+    label {
+      display: block;
+      font-size: 14px;
+      color: #333;
+      margin-bottom: 6px;
+    }
+
+    input[type="email"],
+    input[type="password"] {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 20px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #fff;
+      color: #000;
+      font-size: 15px;
+      outline: none;
+      transition: 0.3s;
+    }
+
+    input:focus {
+      border-color: #FFD700;
+      box-shadow: 0 0 5px #FFD700;
+    }
+
+    .helper {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      margin-bottom: 20px;
+      color: #555;
+    }
+
+    .helper a {
+      color: #e6b800;
+      text-decoration: none;
+    }
+
+    .helper a:hover {
+      text-decoration: underline;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 12px;
+      background-color: #FFD700;
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .btn:hover {
+      background-color: #e6c200;
+    }
+
+    p {
+      text-align: left;
+      margin-top: 20px;
+      font-size: 13px;
+      color: #333;
+    }
+
+    p a {
+      color: #e6b800;
+      text-decoration: none;
+    }
+
+    p a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        justify-content: center;
+        align-items: center;
+        padding: 0;
+      }
+      .login-side {
+        width: 100%;
+        max-width: 380px;
+        text-align: center;
+      }
+      .brand-header {
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="overlay"></div>
+
+  <div class="login-side">
+    <div class="brand-header">
+      <img src="logo.png" alt="IGP SmartStock Logo" class="logo">
+      <h1>IGP SmartStock</h1>
+    </div>
+
+    <h3>Welcome back! Sign in to manage your inventory and operations efficiently.</h3>
+
+    <form id="loginForm">
+      <label for="email">Email Address</label>
+      <input type="email" id="email" placeholder="you@example.com" required>
+
+      <label for="password">Password</label>
+      <input type="password" id="password" placeholder="Your password" required>
+
+      <div class="helper">
+        <label><input type="checkbox" id="remember"> Remember Me</label>
+        <a href="#">Forgot password?</a>
+      </div>
+
+      <button type="submit" class="btn">Log In</button>
+    </form>
+
+    <p>Don’t have an account? <a href="Registration.html">Create one</a></p>
+  </div>
+
+  <!-- Supabase Authentication -->
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+    import { SUPABASE_CONFIG } from "./config/credentials.js";
+
+    const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+
+    const form = document.getElementById("loginForm");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+
+      if (!email || !password) {
+        Swal.fire({
+          icon: "warning",
+          title: "Missing Fields",
+          text: "Please fill in both email and password.",
+          confirmButtonColor: "#FFD700",
+        });
+        return;
+      }
+
+      // Sign in with Supabase Authentication
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) {
+        Swal.fire({
+          icon: "error",
+          title: "Login Failed",
+          text: error.message || "Invalid email or password.",
+          confirmButtonColor: "#FFD700",
+        });
+        return;
+      }
+
+      // Store user session information
+      const user = data.user;
+      localStorage.setItem("userEmail", user.email);
+      localStorage.setItem("userId", user.id);
+      localStorage.setItem("isLoggedIn", "true");
+      
+      // Store user profile data if available
+      if (user.user_metadata) {
+        localStorage.setItem("userFullName", user.user_metadata.full_name || "");
+        localStorage.setItem("userOfficeUnit", user.user_metadata.office_unit || "");
+      }
+
+      Swal.fire({
+        icon: "success",
+        title: "Login Successful",
+        text: `Welcome back, ${user.user_metadata?.full_name || user.email}!`,
+        timer: 1500,
+        showConfirmButton: false,
+        background: "#fff",
+        color: "#000",
+        didClose: () => {
+          window.location.href = "main.html";
+        },
+      });
+    });
+  </script>
+</body>
+</html>

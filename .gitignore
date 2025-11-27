@@ -1,0 +1,22 @@
+# Git Ignore File
+# Keep sensitive credentials secure
+
+# Supabase Credentials
+config/credentials.js
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Backups
+*.backup
+*.bak

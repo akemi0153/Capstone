@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IGP SmartStock - Inventory Management System</title>
+    
+    <!-- External CSS -->
+    <link rel="stylesheet" href="css/styles.css">
+    
+    <!-- External Libraries -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Tailwind Config -->
+    <script src="animation/tailwind-config.js"></script>
+    
+    <!-- Authentication Script -->
+    <script src="animation/auth.js"></script>
+</head>
+<body class="bg-white min-h-full">
+    <div class="min-h-full flex bg-gray-50">
+        <!-- Sidebar Component -->
+        <div id="sidebar"></div>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <!-- Header Component -->
+            <div id="header"></div>
+
+            <!-- Content Area -->
+            <main class="flex-1 overflow-y-auto p-6 ml-64">
+                <div id="mainContent">
+                    <!-- Page content will be loaded here -->
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Modals Component -->
+    <div id="modals"></div>
+
+    <!-- Main Application Script -->
+    <script type="module" src="scripts/main.js"></script>
+</body>
+</html>
