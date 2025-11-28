@@ -74,15 +74,32 @@
 
     <!-- Charts and Recent Activity -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <!-- Revenue Chart Placeholder -->
+        <!-- Revenue Chart -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h3 class="text-lg font-semibold text-gray-900 mb-4">Revenue Overview</h3>
-            <div class="h-64 bg-gray-50 rounded-lg flex items-center justify-center">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">Revenue Overview</h3>
+                <select id="revenueChartPeriod" class="text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-yellow-500">
+                    <option value="6">Last 6 Months</option>
+                    <option value="12" selected>Last 12 Months</option>
+                    <option value="all">All Time</option>
+                </select>
+            </div>
+            <div id="revenueChartContainer" class="h-64">
+                <canvas id="revenueChart"></canvas>
+            </div>
+            <!-- Revenue Summary -->
+            <div class="grid grid-cols-3 gap-4 mt-4 pt-4 border-t border-gray-100">
                 <div class="text-center">
-                    <svg class="w-12 h-12 text-gray-400 mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"></path>
-                    </svg>
-                    <p class="text-gray-500">Revenue chart will appear here</p>
+                    <p class="text-xs text-gray-500">Room Rentals</p>
+                    <p id="chartRoomRentals" class="text-sm font-bold text-purple-600">₱0</p>
+                </div>
+                <div class="text-center">
+                    <p class="text-xs text-gray-500">Inventory Sales</p>
+                    <p id="chartInventorySales" class="text-sm font-bold text-blue-600">₱0</p>
+                </div>
+                <div class="text-center">
+                    <p class="text-xs text-gray-500">Total Credits</p>
+                    <p id="chartTotalCredits" class="text-sm font-bold text-green-600">₱0</p>
                 </div>
             </div>
         </div>

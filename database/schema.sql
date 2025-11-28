@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     client_name VARCHAR(255),
     contact VARCHAR(50),
     client_contact VARCHAR(50),
+    email VARCHAR(255),
     start_date DATE,
     lease_start DATE,
     end_date DATE,
@@ -36,7 +37,8 @@ CREATE TABLE IF NOT EXISTS bookings (
     security_deposit DECIMAL(10, 2) DEFAULT 0,
     total_paid DECIMAL(10, 2) DEFAULT 0,
     balance DECIMAL(10, 2) DEFAULT 0,
-    status VARCHAR(20) DEFAULT 'Active' CHECK (status IN ('Active', 'Ended', 'Cancelled')),
+    notes TEXT,
+    status VARCHAR(20) DEFAULT 'Active' CHECK (status IN ('Active', 'Ended', 'Cancelled', 'Paid')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -62,6 +64,7 @@ CREATE TABLE IF NOT EXISTS inventory (
 CREATE TABLE IF NOT EXISTS payments (
     id BIGSERIAL PRIMARY KEY,
     lease_id BIGINT REFERENCES bookings(id) ON DELETE CASCADE,
+    booking_id BIGINT REFERENCES bookings(id) ON DELETE CASCADE,
     amount DECIMAL(10, 2) NOT NULL,
     payment_method VARCHAR(50),
     payment_type VARCHAR(50),
@@ -78,6 +81,7 @@ CREATE TABLE IF NOT EXISTS payments (
 CREATE TABLE IF NOT EXISTS credits (
     id BIGSERIAL PRIMARY KEY,
     lease_id BIGINT REFERENCES bookings(id) ON DELETE CASCADE,
+    booking_id BIGINT REFERENCES bookings(id) ON DELETE CASCADE,
     amount DECIMAL(10, 2) NOT NULL,
     reason VARCHAR(255),
     reference VARCHAR(100),
@@ -94,7 +98,9 @@ CREATE INDEX IF NOT EXISTS idx_rooms_status ON rooms(status);
 CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
 CREATE INDEX IF NOT EXISTS idx_bookings_room_id ON bookings(room_id);
 CREATE INDEX IF NOT EXISTS idx_payments_lease_id ON payments(lease_id);
+CREATE INDEX IF NOT EXISTS idx_payments_booking_id ON payments(booking_id);
 CREATE INDEX IF NOT EXISTS idx_credits_lease_id ON credits(lease_id);
+CREATE INDEX IF NOT EXISTS idx_credits_booking_id ON credits(booking_id);
 CREATE INDEX IF NOT EXISTS idx_inventory_category ON inventory(category);
 CREATE INDEX IF NOT EXISTS idx_inventory_department ON inventory(department);
 CREATE INDEX IF NOT EXISTS idx_inventory_status ON inventory(status);

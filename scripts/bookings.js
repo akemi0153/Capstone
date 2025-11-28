@@ -39,23 +39,50 @@ export function renderBookings(data = bookings) {
         return;
     }
 
-    tbody.innerHTML = data.map(b => `
+    tbody.innerHTML = data.map(b => {
+        const isEnded = b.status === 'Ended' || b.status === 'Cancelled';
+        const isPaid = b.status === 'Paid';
+        const statusColor = b.status === 'Active' ? 'bg-green-100 text-green-800' : 
+                           isPaid ? 'bg-blue-100 text-blue-800' : 
+                           'bg-gray-100 text-gray-800';
+        
+        // Format notes to show reminders
+        const hasNotes = b.notes && b.notes.trim() !== '';
+        const notesPreview = hasNotes ? 
+            (b.notes.length > 50 ? b.notes.substring(0, 50) + '...' : b.notes) : '';
+        
+        return `
         <tr data-booking-id="${b.id}" class="hover:bg-gray-50">
             <td class="px-6 py-4">#${b.id}</td>
             <td class="px-6 py-4">${b.room_name || "N/A"}</td>
-            <td class="px-6 py-4">${b.tenant || "—"}</td>
+            <td class="px-6 py-4">
+                <div>
+                    <div class="font-medium text-gray-900">${b.tenant || "—"}</div>
+                    ${hasNotes ? `
+                        <div class="mt-1 flex items-start text-xs text-gray-500">
+                            <svg class="w-3 h-3 mr-1 mt-0.5 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"></path>
+                            </svg>
+                            <span class="italic" title="${b.notes}">${notesPreview}</span>
+                        </div>
+                    ` : ''}
+                </div>
+            </td>
             <td class="px-6 py-4">${b.contact || "—"}</td>
             <td class="px-6 py-4">${b.start_date || "—"}</td>
             <td class="px-6 py-4">${b.end_date || "—"}</td>
             <td class="px-6 py-4">₱${(b.rent || 0).toLocaleString()}</td>
             <td class="px-6 py-4">
-                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${b.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}">
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColor}">
                     ${b.status}
                 </span>
             </td>
             <td class="px-6 py-4">
                 <div class="flex items-center justify-center gap-2">
-                    <button onclick="window.cancelLease(${b.id})" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-150 shadow-sm hover:shadow-md">
+                    <button 
+                        onclick="window.cancelLease(${b.id})" 
+                        class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-150 shadow-sm hover:shadow-md ${isEnded ? 'opacity-50 cursor-not-allowed' : ''}"
+                        ${isEnded ? 'disabled title="Lease already ended"' : ''}>
                         End
                     </button>
                     <button onclick="window.deleteLease(${b.id})" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-150 shadow-sm hover:shadow-md">
@@ -64,7 +91,8 @@ export function renderBookings(data = bookings) {
                 </div>
             </td>
         </tr>
-    `).join("");
+        `;
+    }).join("");
 }
 
 // Cancel/End lease
@@ -73,6 +101,17 @@ export async function cancelLease(bookingId) {
         const booking = bookings.find(b => b.id === bookingId);
         if (!booking) {
             Swal.fire("Error", "Booking not found.", "error");
+            return;
+        }
+
+        // Check if lease is already ended
+        if (booking.status === 'Ended' || booking.status === 'Cancelled') {
+            Swal.fire({
+                icon: "info",
+                title: "Already Ended",
+                text: "This lease has already been ended.",
+                confirmButtonColor: "#eab308"
+            });
             return;
         }
 

@@ -1,8 +1,8 @@
 // Main Application Script
 import { loadComponent, loadPage } from './loader.js';
 import { initializeNavigation } from './navigation.js';
-import { loadInventory, renderInventory, deleteInventoryItem, filterInventory } from './inventory.js';
-import { loadRooms, renderRooms, deleteRoom, updateRoomDropdown } from './rooms.js';
+import { loadInventory, renderInventory, deleteInventoryItem, filterInventory, recordStockTransaction, clearStockTransactions, populateMonthFilter, exportStockHistoryCSV } from './inventory.js';
+import { loadRooms, renderRooms, deleteRoom, updateRoomDropdown, filterRooms } from './rooms.js';
 import { loadBookings, renderBookings, cancelLease, deleteLease } from './bookings.js';
 
 // Global state for stock operations
@@ -36,17 +36,45 @@ window.openStockModal = async function(productId, action) {
 
     document.getElementById('stockProductName').value = product.name;
     document.getElementById('currentStock').value = product.stock;
+    document.getElementById('currentStockDisplay').textContent = product.stock;
     document.getElementById('stockUpdateTitle').textContent = action === 'in' ? 'Stock In' : 'Stock Out';
     document.getElementById('confirmStockUpdate').textContent = action === 'in' ? 'Add Stock' : 'Remove Stock';
+    document.getElementById('quantityActionLabel').textContent = action === 'in' ? 'Add' : 'Remove';
     document.getElementById('stockQuantity').value = '';
     document.getElementById('stockReason').value = '';
+    document.getElementById('projectedStockDisplay').textContent = product.stock;
+    document.getElementById('changeIndicator').textContent = '+0';
     
     const modal = document.getElementById('stockUpdateModal');
     if (modal) {
         modal.classList.remove('hidden');
         modal.classList.add('flex');
     }
+    
+    // Add event listener for real-time stock tracker
+    const quantityInput = document.getElementById('stockQuantity');
+    quantityInput.addEventListener('input', function() {
+        updateStockTracker(product.stock, action);
+    });
 };
+
+// Function to update stock tracker in real-time
+function updateStockTracker(currentStock, action) {
+    const quantity = parseInt(document.getElementById('stockQuantity').value) || 0;
+    let newStock = currentStock;
+    let indicator = '';
+    
+    if (action === 'in') {
+        newStock = currentStock + quantity;
+        indicator = `+${quantity}`;
+    } else {
+        newStock = currentStock - quantity;
+        indicator = `-${quantity}`;
+    }
+    
+    document.getElementById('projectedStockDisplay').textContent = newStock;
+    document.getElementById('changeIndicator').textContent = indicator;
+}
 
 // Page initialization functions
 window.initInventoryPage = async function() {
@@ -69,6 +97,46 @@ window.initInventoryPage = async function() {
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
             }
+        });
+    }
+    
+    // Clear Activity History button
+    const clearActivityBtn = document.getElementById('clearActivityBtn');
+    if (clearActivityBtn) {
+        clearActivityBtn.addEventListener('click', async () => {
+            const result = await Swal.fire({
+                title: 'Clear Activity History?',
+                text: 'This will permanently delete all stock activity records.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626',
+                cancelButtonColor: '#6b7280',
+                confirmButtonText: 'Yes, clear all',
+                cancelButtonText: 'Cancel'
+            });
+            
+            if (result.isConfirmed) {
+                await clearStockTransactions();
+                Swal.fire({
+                    toast: true,
+                    position: 'bottom-end',
+                    icon: 'success',
+                    title: 'Activity history cleared',
+                    showConfirmButton: false,
+                    timer: 1500
+                });
+            }
+        });
+    }
+    
+    // Populate month filter for export
+    populateMonthFilter();
+    
+    // Export Activity History button
+    const exportActivityBtn = document.getElementById('exportActivityBtn');
+    if (exportActivityBtn) {
+        exportActivityBtn.addEventListener('click', () => {
+            exportStockHistoryCSV();
         });
     }
     
@@ -102,6 +170,13 @@ window.initInventoryPage = async function() {
 window.initRoomsPage = async function() {
     await loadRooms();
     await loadBookings();
+    
+    // Setup room filters
+    const roomSearchInput = document.getElementById('roomSearchInput');
+    const roomTypeFilter = document.getElementById('roomTypeFilter');
+    
+    if (roomSearchInput) roomSearchInput.addEventListener('input', filterRooms);
+    if (roomTypeFilter) roomTypeFilter.addEventListener('change', filterRooms);
     
     // Attach event listeners for rooms page
     const addRoomBtn = document.getElementById('addRoomBtn');
@@ -556,7 +631,8 @@ async function loadPaymentSummaryData() {
                         totalDue: balance + lateFee,
                         monthlyRent: monthlyRent,
                         leaseId: booking.id,
-                        contact: booking.contact || booking.client_contact || 'N/A'
+                        contact: booking.contact || booking.client_contact || 'N/A',
+                        email: booking.email || ''
                     });
                 } else if (nextDueDate <= oneWeekFromNow) {
                     // Due this week
@@ -574,6 +650,7 @@ async function loadPaymentSummaryData() {
                         monthlyRent: monthlyRent,
                         leaseId: booking.id,
                         contact: booking.contact || booking.client_contact || 'N/A',
+                        email: booking.email || '',
                         isDueSoon: true
                     });
                 } else {
@@ -687,7 +764,7 @@ function loadOverdueTable(overdueLeases) {
                 <td class="px-6 py-4 text-sm font-bold text-gray-900">₱${lease.totalDue.toLocaleString()}</td>
                 <td class="px-6 py-4">${statusBadge}</td>
                 <td class="px-6 py-4 text-center">
-                    <button onclick="window.sendPaymentReminder(${lease.leaseId}, '${lease.tenant}', '${lease.contact}')" 
+                    <button onclick="window.sendPaymentReminder(${lease.leaseId}, '${lease.tenant.replace(/'/g, "\\'") }', '${lease.contact}', '${lease.email}')" 
                         class="text-blue-600 hover:text-blue-800 font-medium text-sm transition-colors">
                         Send Reminder
                     </button>
@@ -698,39 +775,147 @@ function loadOverdueTable(overdueLeases) {
 }
 
 // Send payment reminder function
-window.sendPaymentReminder = function(leaseId, tenantName, contact) {
-    Swal.fire({
+window.sendPaymentReminder = async function(leaseId, tenantName, contact, email = '') {
+    const result = await Swal.fire({
         title: 'Send Payment Reminder',
         html: `
-            <p class="text-left mb-4">Send reminder to <strong>${tenantName}</strong></p>
-            <p class="text-left text-sm text-gray-600 mb-2">Contact: ${contact}</p>
-            <textarea id="reminderMessage" class="w-full border border-gray-300 rounded-lg p-3 text-sm" rows="4" placeholder="Enter reminder message...">Dear ${tenantName},
+            <div class="text-left space-y-3">
+                <p class="mb-2">Send reminder to <strong>${tenantName}</strong></p>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Contact Number</label>
+                    <input type="tel" id="reminderContact" value="${contact || ''}" placeholder="09123456789" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Email Address (Optional)</label>
+                    <input type="email" id="reminderEmail" value="${email || ''}" placeholder="tenant@example.com" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Reminder Message</label>
+                    <textarea id="reminderMessage" class="w-full border border-gray-300 rounded-lg p-3 text-sm" rows="4" placeholder="Enter reminder message...">Dear ${tenantName},
 
 This is a friendly reminder that your rent payment is overdue. Please settle your balance at your earliest convenience to avoid additional late fees.
 
 Thank you!</textarea>
+                </div>
+            </div>
         `,
         showCancelButton: true,
         confirmButtonText: 'Send Reminder',
         confirmButtonColor: '#3b82f6',
         cancelButtonText: 'Cancel',
+        width: '600px',
         preConfirm: () => {
-            return document.getElementById('reminderMessage').value;
+            const message = document.getElementById('reminderMessage').value;
+            const contactNum = document.getElementById('reminderContact').value;
+            const emailAddr = document.getElementById('reminderEmail').value;
+            
+            if (!message.trim()) {
+                Swal.showValidationMessage('Please enter a reminder message');
+                return false;
+            }
+            
+            if (!contactNum.trim() && !emailAddr.trim()) {
+                Swal.showValidationMessage('Please provide at least a contact number or email');
+                return false;
+            }
+            
+            return { message, contact: contactNum, email: emailAddr };
         }
-    }).then((result) => {
-        if (result.isConfirmed) {
-            // In a real application, this would send SMS/email
+    });
+
+    if (result.isConfirmed) {
+        try {
+            const { message, contact: contactNum, email: emailAddr } = result.value;
+            const { supabase } = await import('./config.js');
+            
+            // Get current booking to append reminder note
+            const { data: booking, error: fetchError } = await supabase
+                .from('bookings')
+                .select('notes, contact, email')
+                .eq('id', leaseId)
+                .single();
+            
+            if (fetchError) {
+                console.error('Error fetching booking:', fetchError);
+            }
+            
+            // Create reminder note with timestamp
+            const timestamp = new Date().toLocaleString();
+            const reminderNote = `[${timestamp}] REMINDER SENT: ${message}`;
+            const existingNotes = booking?.notes || '';
+            const updatedNotes = existingNotes 
+                ? `${existingNotes}\n\n${reminderNote}` 
+                : reminderNote;
+            
+            // Update booking with reminder note and contact info
+            const updateData = {
+                notes: updatedNotes
+            };
+            
+            // Update contact if provided
+            if (contactNum) {
+                updateData.contact = contactNum;
+            }
+            
+            // Update email if provided (add column if it doesn't exist)
+            if (emailAddr) {
+                updateData.email = emailAddr;
+            }
+            
+            const { error: updateError } = await supabase
+                .from('bookings')
+                .update(updateData)
+                .eq('id', leaseId);
+            
+            if (updateError) {
+                console.error('Error updating booking:', updateError);
+                throw updateError;
+            }
+            
+            // In a real application, this would integrate with:
+            // - SMS API (Twilio, Semaphore, etc.) for SMS to contactNum
+            // - Email service (SendGrid, AWS SES, etc.) for email to emailAddr
+            
+            // Log the reminder (for demonstration)
+            console.log('📧 Payment Reminder Sent:');
+            console.log('Lease ID:', leaseId);
+            console.log('Tenant:', tenantName);
+            console.log('Contact:', contactNum);
+            console.log('Email:', emailAddr);
+            console.log('Message:', message);
+            
             Swal.fire({
                 icon: 'success',
                 title: 'Reminder Sent!',
-                text: `Payment reminder sent to ${tenantName}`,
-                toast: true,
-                position: 'bottom-end',
-                showConfirmButton: false,
-                timer: 3000
+                html: `
+                    <p class="mb-2">Payment reminder sent to <strong>${tenantName}</strong></p>
+                    <div class="text-sm text-gray-600 space-y-1">
+                        ${contactNum ? `<p>📱 SMS: ${contactNum}</p>` : ''}
+                        ${emailAddr ? `<p>📧 Email: ${emailAddr}</p>` : ''}
+                        <p class="mt-2 text-xs text-gray-500">Note added to lease record</p>
+                    </div>
+                `,
+                confirmButtonColor: '#3b82f6'
+            });
+            
+            // Reload payment summary data to show updated notes
+            if (typeof loadPaymentSummaryData === 'function') {
+                await loadPaymentSummaryData();
+            }
+            
+        } catch (error) {
+            console.error('Error sending reminder:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Failed to Send',
+                text: 'Could not send reminder. Please try again.',
+                confirmButtonColor: '#ef4444'
             });
         }
-    });
+    }
 };
 
 // Setup payment export
@@ -1025,18 +1210,27 @@ window.initDashboardPage = async function() {
     await loadDashboardData();
 };
 
+// Store dashboard data globally for chart updates
+let dashboardData = {
+    payments: [],
+    credits: [],
+    stockTransactions: [],
+    inventory: []
+};
+
 // Load and display dashboard statistics
 async function loadDashboardData() {
     try {
         const { supabase } = await import('./config.js');
         
-        // Fetch all data in parallel
-        const [inventoryResult, roomsResult, bookingsResult, paymentsResult, creditsResult] = await Promise.all([
+        // Fetch all data in parallel including stock transactions
+        const [inventoryResult, roomsResult, bookingsResult, paymentsResult, creditsResult, stockTransactionsResult] = await Promise.all([
             supabase.from('inventory').select('*'),
             supabase.from('rooms').select('*'),
             supabase.from('bookings').select('*'),
             supabase.from('payments').select('*'),
-            supabase.from('credits').select('*')
+            supabase.from('credits').select('*'),
+            supabase.from('stock_transactions').select('*').order('created_at', { ascending: false })
         ]);
         
         const inventory = inventoryResult.data || [];
@@ -1044,6 +1238,15 @@ async function loadDashboardData() {
         const bookings = bookingsResult.data || [];
         const payments = paymentsResult.data || [];
         const credits = creditsResult.data || [];
+        let stockTransactions = stockTransactionsResult.data || [];
+        
+        // Fallback to localStorage if stock_transactions table doesn't exist
+        if (stockTransactionsResult.error) {
+            stockTransactions = JSON.parse(localStorage.getItem('stockTransactions') || '[]');
+        }
+        
+        // Store data globally for chart updates
+        dashboardData = { payments, credits, stockTransactions, inventory };
         
         // Calculate statistics
         
@@ -1076,8 +1279,12 @@ async function loadDashboardData() {
         
         // Revenue Calculations
         const totalPayments = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-        const totalCredits = credits.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
-        const totalRevenue = totalPayments + totalCredits;
+        const totalCreditsAmount = credits.reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
+        
+        // Calculate inventory sales from stock out transactions
+        const inventorySalesAmount = calculateInventorySales(stockTransactions, inventory);
+        
+        const totalRevenue = totalPayments + totalCreditsAmount + inventorySalesAmount;
         
         document.getElementById('dashTotalRevenue').textContent = `₱${totalRevenue.toLocaleString()}`;
         
@@ -1096,22 +1303,27 @@ async function loadDashboardData() {
             return creditDate.getMonth() === currentMonth && creditDate.getFullYear() === currentYear;
         }).reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
         
-        const monthlyRevenue = monthlyPayments + monthlyCredits;
+        const monthlyInventorySales = calculateMonthlyInventorySales(stockTransactions, inventory, currentMonth, currentYear);
+        
+        const monthlyRevenue = monthlyPayments + monthlyCredits + monthlyInventorySales;
         document.getElementById('dashMonthlyRevenue').textContent = `₱${monthlyRevenue.toLocaleString()}`;
         
         // Revenue Breakdown
-        // For inventory sales, we'll need to track sales separately
-        // For now, we'll show payments and credits breakdown
         const roomRentals = payments.filter(p => p.payment_type === 'Rent' || p.lease_id).reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
         const deposits = payments.filter(p => p.payment_type === 'Deposit' || p.payment_type === 'Security Deposit').reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-        const inventorySales = 0; // Placeholder for future sales tracking
         
-        document.getElementById('dashInventorySales').textContent = `₱${inventorySales.toLocaleString()}`;
+        document.getElementById('dashInventorySales').textContent = `₱${inventorySalesAmount.toLocaleString()}`;
         document.getElementById('dashRoomRentals').textContent = `₱${roomRentals.toLocaleString()}`;
         document.getElementById('dashDeposits').textContent = `₱${deposits.toLocaleString()}`;
         
         // Recent Transactions
-        loadRecentTransactions(payments, credits);
+        loadRecentTransactions(payments, credits, stockTransactions, inventory);
+        
+        // Render Revenue Chart
+        renderRevenueChart(payments, credits, stockTransactions, inventory, 12);
+        
+        // Setup chart period filter
+        setupChartPeriodFilter();
         
         console.log('✅ Dashboard data loaded successfully');
     } catch (error) {
@@ -1128,8 +1340,209 @@ async function loadDashboardData() {
     }
 }
 
+// Calculate inventory sales from stock out transactions
+function calculateInventorySales(stockTransactions, inventory) {
+    let total = 0;
+    stockTransactions.forEach(t => {
+        if (t.action === 'out') {
+            const product = inventory.find(p => p.id === t.inventory_id || p.name === t.product_name);
+            if (product) {
+                total += t.quantity * (parseFloat(product.price) || 0);
+            }
+        }
+    });
+    return total;
+}
+
+// Calculate monthly inventory sales
+function calculateMonthlyInventorySales(stockTransactions, inventory, month, year) {
+    let total = 0;
+    stockTransactions.forEach(t => {
+        if (t.action === 'out') {
+            const transactionDate = new Date(t.created_at);
+            if (transactionDate.getMonth() === month && transactionDate.getFullYear() === year) {
+                const product = inventory.find(p => p.id === t.inventory_id || p.name === t.product_name);
+                if (product) {
+                    total += t.quantity * (parseFloat(product.price) || 0);
+                }
+            }
+        }
+    });
+    return total;
+}
+
+// Setup chart period filter
+function setupChartPeriodFilter() {
+    const periodFilter = document.getElementById('revenueChartPeriod');
+    if (periodFilter) {
+        periodFilter.addEventListener('change', function() {
+            const months = this.value === 'all' ? 24 : parseInt(this.value);
+            renderRevenueChart(
+                dashboardData.payments,
+                dashboardData.credits,
+                dashboardData.stockTransactions,
+                dashboardData.inventory,
+                months
+            );
+        });
+    }
+}
+
+// Render Revenue Chart
+let revenueChartInstance = null;
+
+function renderRevenueChart(payments, credits, stockTransactions, inventory, monthsToShow = 12) {
+    const canvas = document.getElementById('revenueChart');
+    if (!canvas) return;
+    
+    // Check if Chart.js is available
+    if (typeof Chart === 'undefined') {
+        // Load Chart.js dynamically
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
+        script.onload = () => renderRevenueChart(payments, credits, stockTransactions, inventory, monthsToShow);
+        document.head.appendChild(script);
+        return;
+    }
+    
+    // Destroy existing chart if exists
+    if (revenueChartInstance) {
+        revenueChartInstance.destroy();
+    }
+    
+    // Prepare monthly data
+    const months = [];
+    const roomRentalsData = [];
+    const inventorySalesData = [];
+    const creditsData = [];
+    const now = new Date();
+    
+    for (let i = monthsToShow - 1; i >= 0; i--) {
+        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const monthLabel = date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        
+        months.push(monthLabel);
+        
+        // Calculate room rentals for this month
+        const monthRentals = payments.filter(p => {
+            const paymentDate = new Date(p.created_at || p.payment_date);
+            return paymentDate.getMonth() === date.getMonth() && 
+                   paymentDate.getFullYear() === date.getFullYear() &&
+                   (p.payment_type === 'Rent' || p.lease_id);
+        }).reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+        roomRentalsData.push(monthRentals);
+        
+        // Calculate inventory sales for this month
+        const monthInventorySales = stockTransactions.filter(t => {
+            if (t.action !== 'out') return false;
+            const transactionDate = new Date(t.created_at);
+            return transactionDate.getMonth() === date.getMonth() && 
+                   transactionDate.getFullYear() === date.getFullYear();
+        }).reduce((sum, t) => {
+            const product = inventory.find(p => p.id === t.inventory_id || p.name === t.product_name);
+            return sum + (t.quantity * (parseFloat(product?.price) || 0));
+        }, 0);
+        inventorySalesData.push(monthInventorySales);
+        
+        // Calculate credits for this month
+        const monthCredits = credits.filter(c => {
+            const creditDate = new Date(c.created_at || c.credit_date);
+            return creditDate.getMonth() === date.getMonth() && 
+                   creditDate.getFullYear() === date.getFullYear();
+        }).reduce((sum, c) => sum + (parseFloat(c.amount) || 0), 0);
+        creditsData.push(monthCredits);
+    }
+    
+    // Update summary totals
+    const totalRoomRentals = roomRentalsData.reduce((a, b) => a + b, 0);
+    const totalInventorySales = inventorySalesData.reduce((a, b) => a + b, 0);
+    const totalCredits = creditsData.reduce((a, b) => a + b, 0);
+    
+    const chartRoomRentals = document.getElementById('chartRoomRentals');
+    const chartInventorySales = document.getElementById('chartInventorySales');
+    const chartTotalCredits = document.getElementById('chartTotalCredits');
+    
+    if (chartRoomRentals) chartRoomRentals.textContent = `₱${totalRoomRentals.toLocaleString()}`;
+    if (chartInventorySales) chartInventorySales.textContent = `₱${totalInventorySales.toLocaleString()}`;
+    if (chartTotalCredits) chartTotalCredits.textContent = `₱${totalCredits.toLocaleString()}`;
+    
+    // Create the chart
+    const ctx = canvas.getContext('2d');
+    revenueChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: months,
+            datasets: [
+                {
+                    label: 'Room Rentals',
+                    data: roomRentalsData,
+                    backgroundColor: 'rgba(147, 51, 234, 0.8)',
+                    borderColor: 'rgba(147, 51, 234, 1)',
+                    borderWidth: 1,
+                    borderRadius: 4
+                },
+                {
+                    label: 'Inventory Sales',
+                    data: inventorySalesData,
+                    backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                    borderColor: 'rgba(59, 130, 246, 1)',
+                    borderWidth: 1,
+                    borderRadius: 4
+                },
+                {
+                    label: 'Credits',
+                    data: creditsData,
+                    backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                    borderColor: 'rgba(34, 197, 94, 1)',
+                    borderWidth: 1,
+                    borderRadius: 4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        boxWidth: 12,
+                        padding: 15,
+                        font: { size: 11 }
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ₱${context.raw.toLocaleString()}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    stacked: false,
+                    grid: { display: false },
+                    ticks: { font: { size: 10 } }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(0,0,0,0.05)' },
+                    ticks: {
+                        font: { size: 10 },
+                        callback: function(value) {
+                            return '₱' + value.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
 // Load recent transactions
-function loadRecentTransactions(payments, credits) {
+function loadRecentTransactions(payments, credits, stockTransactions = [], inventory = []) {
     const transactionsList = document.getElementById('recentTransactionsList');
     if (!transactionsList) return;
     
@@ -1148,8 +1561,19 @@ function loadRecentTransactions(payments, credits) {
             date: new Date(c.created_at || c.credit_date),
             description: c.reason || 'Credit',
             lease: c.lease_id ? `Lease #${c.lease_id}` : ''
-        }))
-    ].sort((a, b) => b.date - a.date).slice(0, 5); // Get 5 most recent
+        })),
+        ...stockTransactions.filter(t => t.action === 'out').map(t => {
+            const product = inventory.find(p => p.id === t.inventory_id || p.name === t.product_name);
+            const amount = t.quantity * (parseFloat(product?.price) || 0);
+            return {
+                type: 'Sale',
+                amount: amount,
+                date: new Date(t.created_at),
+                description: `${t.product_name} x${t.quantity}`,
+                lease: 'Inventory Sale'
+            };
+        })
+    ].sort((a, b) => b.date - a.date).slice(0, 8); // Get 8 most recent
     
     if (allTransactions.length === 0) {
         transactionsList.innerHTML = `
@@ -1164,14 +1588,32 @@ function loadRecentTransactions(payments, credits) {
         return;
     }
     
-    transactionsList.innerHTML = allTransactions.map(t => `
+    transactionsList.innerHTML = allTransactions.map(t => {
+        let bgColor, iconColor, textColor;
+        if (t.type === 'Payment') {
+            bgColor = 'bg-green-100';
+            iconColor = 'text-green-600';
+            textColor = 'text-green-600';
+        } else if (t.type === 'Sale') {
+            bgColor = 'bg-orange-100';
+            iconColor = 'text-orange-600';
+            textColor = 'text-orange-600';
+        } else {
+            bgColor = 'bg-blue-100';
+            iconColor = 'text-blue-600';
+            textColor = 'text-blue-600';
+        }
+        
+        return `
         <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
             <div class="flex items-center space-x-3">
                 <div class="flex-shrink-0">
-                    <div class="w-10 h-10 rounded-full ${t.type === 'Payment' ? 'bg-green-100' : 'bg-blue-100'} flex items-center justify-center">
-                        <svg class="w-5 h-5 ${t.type === 'Payment' ? 'text-green-600' : 'text-blue-600'}" fill="currentColor" viewBox="0 0 20 20">
-                            <path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z"></path>
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clip-rule="evenodd"></path>
+                    <div class="w-10 h-10 rounded-full ${bgColor} flex items-center justify-center">
+                        <svg class="w-5 h-5 ${iconColor}" fill="currentColor" viewBox="0 0 20 20">
+                            ${t.type === 'Sale' ? 
+                                '<path fill-rule="evenodd" d="M10 2a4 4 0 00-4 4v1H5a1 1 0 00-.994.89l-1 9A1 1 0 004 18h12a1 1 0 00.994-1.11l-1-9A1 1 0 0015 7h-1V6a4 4 0 00-4-4zm2 5V6a2 2 0 10-4 0v1h4zm-6 3a1 1 0 112 0 1 1 0 01-2 0zm7-1a1 1 0 100 2 1 1 0 000-2z" clip-rule="evenodd"></path>' :
+                                '<path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z"></path><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clip-rule="evenodd"></path>'
+                            }
                         </svg>
                     </div>
                 </div>
@@ -1181,12 +1623,12 @@ function loadRecentTransactions(payments, credits) {
                 </div>
             </div>
             <div class="text-right">
-                <p class="text-sm font-semibold ${t.type === 'Payment' ? 'text-green-600' : 'text-blue-600'}">
+                <p class="text-sm font-semibold ${textColor}">
                     ₱${t.amount.toLocaleString()}
                 </p>
             </div>
         </div>
-    `).join('');
+    `}).join('');
 }
 
 // Modal control functions
@@ -1441,6 +1883,7 @@ async function initializeFormHandlers() {
                 return;
             }
             
+            const previousStock = products.stock;
             const newStock = currentStockAction === 'in' 
                 ? products.stock + quantity 
                 : products.stock - quantity;
@@ -1460,26 +1903,56 @@ async function initializeFormHandlers() {
             if (newStock === 0) newStatus = 'Out of Stock';
             else if (newStock <= 10) newStatus = 'Low Stock';
             
-            // Update stock in database
+            // Update stock in database (updated_at will be handled by trigger)
             const { error: updateError } = await supabase
                 .from('inventory')
                 .update({ 
                     stock: newStock, 
-                    status: newStatus,
-                    updated_at: new Date().toISOString()
+                    status: newStatus
                 })
                 .eq('id', selectedProductId);
             
             if (updateError) {
                 console.error('Failed to update stock:', updateError);
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Update Failed',
-                    text: updateError.message,
-                    confirmButtonColor: '#eab308'
-                });
+                
+                // Check if it's a schema cache issue
+                if (updateError.message.includes("updated_at") || updateError.message.includes("schema cache")) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Database Schema Update Needed',
+                        html: `
+                            <p class="mb-4">The database is missing the <code>updated_at</code> column.</p>
+                            <p class="mb-4">Please run the migration script:</p>
+                            <p class="bg-gray-100 p-2 rounded text-sm font-mono break-all">
+                                database/fix_missing_columns.sql
+                            </p>
+                            <p class="mt-4 text-sm text-gray-600">
+                                Open your Supabase SQL Editor and run this script to fix the issue.
+                            </p>
+                        `,
+                        confirmButtonColor: '#eab308'
+                    });
+                } else {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Update Failed',
+                        text: updateError.message,
+                        confirmButtonColor: '#eab308'
+                    });
+                }
                 return;
             }
+            
+            // Record the stock transaction for activity tracker
+            await recordStockTransaction(
+                selectedProductId,
+                products.name,
+                currentStockAction,
+                quantity,
+                previousStock,
+                newStock,
+                reason
+            );
             
             await loadInventory();
             closeModal('stockUpdateModal');
@@ -1591,6 +2064,7 @@ async function initializeFormHandlers() {
             const roomId = parseInt(formData.get('bookingRoom'));
             const clientName = formData.get('clientName');
             const clientContact = formData.get('clientContact');
+            const clientEmail = formData.get('clientEmail') || '';
             const leaseStart = formData.get('bookingDate');
             const leaseEnd = formData.get('leaseEndDate');
             const duration = parseInt(formData.get('bookingDuration'));
@@ -1633,6 +2107,7 @@ async function initializeFormHandlers() {
                 client_name: clientName,
                 contact: clientContact,
                 client_contact: clientContact,
+                email: clientEmail,
                 start_date: leaseStart,
                 lease_start: leaseStart,
                 end_date: leaseEnd,
@@ -1666,8 +2141,7 @@ async function initializeFormHandlers() {
             const { error: roomError } = await supabase
                 .from('rooms')
                 .update({ 
-                    status: 'Occupied',
-                    updated_at: new Date().toISOString()
+                    status: 'Occupied'
                 })
                 .eq('id', roomId);
             
@@ -1739,6 +2213,7 @@ async function initializeFormHandlers() {
             
             // Create payment record
             const paymentRecord = {
+                lease_id: leaseId,
                 booking_id: leaseId,
                 amount: amount,
                 payment_method: paymentMethod,
@@ -1748,27 +2223,35 @@ async function initializeFormHandlers() {
                 created_at: new Date().toISOString()
             };
             
-            // Insert payment record (you may need to create a payments table)
+            // Insert payment record
             const { error: paymentError } = await supabase
                 .from('payments')
                 .insert([paymentRecord]);
             
             if (paymentError) {
                 console.error('Failed to record payment:', paymentError);
-                // If payments table doesn't exist, just update the booking
-                console.log('Updating booking total_paid instead...');
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Payment Error',
+                    text: `Could not save payment: ${paymentError.message}`,
+                    confirmButtonColor: '#ef4444'
+                });
+                return;
             }
             
             // Update booking's total_paid and balance
             const newTotalPaid = (booking.total_paid || 0) + amount;
             const newBalance = (booking.balance || 0) - amount;
             
+            // Determine if lease should be marked as paid
+            const newStatus = newBalance <= 0 ? 'Paid' : booking.status;
+            
             const { error: updateError } = await supabase
                 .from('bookings')
                 .update({ 
                     total_paid: newTotalPaid,
                     balance: newBalance < 0 ? 0 : newBalance,
-                    updated_at: new Date().toISOString()
+                    status: newStatus
                 })
                 .eq('id', leaseId);
             
@@ -1783,23 +2266,47 @@ async function initializeFormHandlers() {
                 return;
             }
             
-            await loadBookings();
+            // Reset form and close modal first
+            document.getElementById('addPaymentForm').reset();
             closeModal('addPaymentModal');
             
+            // Show success message
             Swal.fire({
                 icon: 'success',
-                title: 'Payment Recorded!',
+                title: 'Payment Recorded Successfully!',
                 html: `
-                    <div class="text-left">
-                        <p class="mb-2"><strong>Amount:</strong> ₱${amount.toLocaleString()}</p>
-                        <p class="mb-2"><strong>Method:</strong> ${paymentMethod === 'cash' ? 'Cash' : paymentMethod.toUpperCase()}</p>
-                        ${receiptNumber ? `<p class="mb-2"><strong>Receipt:</strong> ${receiptNumber}</p>` : ''}
-                        <p class="mt-4 text-sm text-gray-600">Remember to issue an official receipt to the tenant.</p>
+                    <div class="text-left space-y-2">
+                        <p><strong>Tenant:</strong> ${booking.tenant || booking.client_name}</p>
+                        <p><strong>Room:</strong> ${booking.room_name}</p>
+                        <p><strong>Amount Paid:</strong> ₱${amount.toLocaleString()}</p>
+                        <p><strong>Method:</strong> ${paymentMethod === 'cash' ? 'Cash Payment' : paymentMethod.toUpperCase()}</p>
+                        ${receiptNumber ? `<p><strong>Receipt #:</strong> ${receiptNumber}</p>` : ''}
+                        <p><strong>New Balance:</strong> ₱${Math.max(0, newBalance).toLocaleString()}</p>
+                        ${newStatus === 'Paid' ? '<p class="mt-3 text-green-600 font-bold">✓ Lease Fully Paid!</p>' : ''}
+                        <p class="mt-4 text-sm text-gray-600 italic">Remember to issue an official receipt to the tenant.</p>
                     </div>
                 `,
                 confirmButtonColor: '#10b981',
                 confirmButtonText: 'Done'
             });
+            
+            // Reload data across all modules in background
+            await loadBookings();
+            
+            // Reload rooms to update dropdown
+            if (typeof loadRooms === 'function') {
+                await loadRooms();
+            }
+            
+            // Reload payment summary if on that page
+            if (typeof loadPaymentSummaryData === 'function') {
+                await loadPaymentSummaryData();
+            }
+            
+            // Reload dashboard if on that page
+            if (typeof loadDashboardData === 'function') {
+                await loadDashboardData();
+            }
         });
     }
     
@@ -1809,6 +2316,8 @@ async function initializeFormHandlers() {
         addCreditForm.dataset.bound = 'true';
         addCreditForm.addEventListener('submit', async function(e) {
             e.preventDefault();
+            
+            const { supabase } = await import('./config.js');
             
             const leaseId = parseInt(document.getElementById('creditLease').value);
             const amount = parseFloat(document.getElementById('creditAmount').value);
@@ -1846,34 +2355,41 @@ async function initializeFormHandlers() {
             
             // Create credit record
             const creditRecord = {
+                lease_id: leaseId,
                 booking_id: leaseId,
                 amount: amount,
                 reason: reason,
                 notes: notes,
-                reference_number: reference || null,
+                reference: reference || null,
                 credit_date: new Date().toISOString().split('T')[0],
                 created_at: new Date().toISOString()
             };
             
-            // Insert credit record (you may need to create a credits table)
+            // Insert credit record
             const { error: creditError } = await supabase
                 .from('credits')
                 .insert([creditRecord]);
             
             if (creditError) {
                 console.error('Failed to record credit:', creditError);
-                // If credits table doesn't exist, just update the booking
-                console.log('Updating booking balance instead...');
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Credit Error',
+                    text: `Could not save credit: ${creditError.message}`,
+                    confirmButtonColor: '#ef4444'
+                });
+                return;
             }
             
             // Update booking's balance (reduce it by credit amount)
             const newBalance = (booking.balance || 0) - amount;
+            const newStatus = newBalance <= 0 ? 'Paid' : booking.status;
             
             const { error: updateError } = await supabase
                 .from('bookings')
                 .update({ 
                     balance: newBalance < 0 ? 0 : newBalance,
-                    updated_at: new Date().toISOString()
+                    status: newStatus
                 })
                 .eq('id', leaseId);
             
@@ -1888,23 +2404,47 @@ async function initializeFormHandlers() {
                 return;
             }
             
-            await loadBookings();
+            // Reset form and close modal
+            document.getElementById('addCreditForm').reset();
             closeModal('addCreditModal');
             
+            // Show success message
             Swal.fire({
                 icon: 'success',
-                title: 'Credit Added!',
+                title: 'Credit Added Successfully!',
                 html: `
-                    <div class="text-left">
-                        <p class="mb-2"><strong>Amount:</strong> ₱${amount.toLocaleString()}</p>
-                        <p class="mb-2"><strong>Reason:</strong> ${reason}</p>
-                        ${reference ? `<p class="mb-2"><strong>Reference:</strong> ${reference}</p>` : ''}
-                        <p class="mt-4 text-sm text-gray-600">${notes}</p>
+                    <div class="text-left space-y-2">
+                        <p><strong>Tenant:</strong> ${booking.tenant || booking.client_name}</p>
+                        <p><strong>Room:</strong> ${booking.room_name}</p>
+                        <p><strong>Credit Amount:</strong> ₱${amount.toLocaleString()}</p>
+                        <p><strong>Reason:</strong> ${reason.charAt(0).toUpperCase() + reason.slice(1)}</p>
+                        ${reference ? `<p><strong>Reference:</strong> ${reference}</p>` : ''}
+                        <p><strong>New Balance:</strong> ₱${Math.max(0, newBalance).toLocaleString()}</p>
+                        ${newStatus === 'Paid' ? '<p class="mt-3 text-green-600 font-bold">✓ Lease Fully Paid!</p>' : ''}
+                        <p class="mt-4 text-sm text-gray-600 italic">${notes}</p>
                     </div>
                 `,
                 confirmButtonColor: '#3b82f6',
                 confirmButtonText: 'Done'
             });
+            
+            // Reload data across all modules in background
+            await loadBookings();
+            
+            // Reload rooms
+            if (typeof loadRooms === 'function') {
+                await loadRooms();
+            }
+            
+            // Reload payment summary if on that page
+            if (typeof loadPaymentSummaryData === 'function') {
+                await loadPaymentSummaryData();
+            }
+            
+            // Reload dashboard if on that page
+            if (typeof loadDashboardData === 'function') {
+                await loadDashboardData();
+            }
         });
     }
 }
