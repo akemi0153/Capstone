@@ -1,4 +1,4 @@
-// Authentication Guard - Protect main.html from unauthorized access
+// Authentication Guard - Protect index.html from unauthorized access
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_CONFIG } from "../config/credentials.js";
 
