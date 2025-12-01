@@ -2598,10 +2598,14 @@ async function initializeLogout() {
 // Initialize application
 async function initApp() {
     try {
+        console.log('🚀 Starting application initialization...');
+        
         // Load components
+        console.log('Loading components...');
         await loadComponent('components/sidebar.html', 'sidebar');
         await loadComponent('components/header.html', 'header');
         await loadComponent('components/modals.html', 'modals');
+        console.log('✅ Components loaded');
         
         // Initialize modal controls after modals are loaded
         initializeModalControls();
@@ -2616,6 +2620,7 @@ async function initApp() {
         await initializeLogout();
         
         // Load default page (dashboard)
+        console.log('Loading dashboard...');
         await loadPage('pages/dashboard.html', 'mainContent');
         
         // Initialize navigation
@@ -2627,6 +2632,26 @@ async function initApp() {
         console.log('✅ Application initialized successfully');
     } catch (error) {
         console.error('❌ Error initializing application:', error);
+        
+        // Show error to user
+        const mainContent = document.getElementById('mainContent');
+        if (mainContent) {
+            mainContent.innerHTML = `
+                <div class="flex items-center justify-center h-full p-8">
+                    <div class="text-center max-w-md">
+                        <svg class="w-16 h-16 text-red-500 mx-auto mb-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                        </svg>
+                        <h2 class="text-2xl font-bold text-gray-900 mb-2">Initialization Error</h2>
+                        <p class="text-gray-600 mb-4">Failed to load application components.</p>
+                        <p class="text-sm text-gray-500 mb-4">${error.message}</p>
+                        <button onclick="location.reload()" class="px-4 py-2 bg-yellow-accent text-gray-900 rounded-lg font-medium hover:bg-yellow-hover transition-colors">
+                            Reload Page
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
     }
 }
 

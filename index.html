@@ -5,54 +5,77 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IGP SmartStock - Inventory Management System</title>
     
+    <!-- Emergency fallback: Always show page after 3 seconds -->
+    <script>
+        setTimeout(function() {
+            document.body.classList.remove('loading');
+            document.body.classList.add('loaded');
+            const loader = document.getElementById('authLoader');
+            if (loader) loader.style.display = 'none';
+        }, 3000);
+    </script>
+    
     <!-- IMMEDIATE AUTH CHECK - Blocks unauthorized access -->
     <script type="module">
-        try {
-            const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
-            const { SUPABASE_CONFIG } = await import("./config/credentials.js");
-            
-            const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
-            
-            // Immediate session check before page renders
-            const { data: { session }, error } = await supabase.auth.getSession();
-            
-            if (!session || error) {
-                // No valid session - redirect immediately
-                localStorage.clear();
-                sessionStorage.clear();
-                window.location.replace("Log In.html");
-                // Prevent further script execution
-                throw new Error("Unauthorized access blocked");
-            }
-            
-            // Store user data for quick access
-            const user = session.user;
-            localStorage.setItem("userFullName", user.user_metadata?.full_name || "");
-            localStorage.setItem("userEmail", user.email);
-            
-            // If session exists, show the page content and update welcome message
-            document.addEventListener('DOMContentLoaded', () => {
-                // Remove loading state
+        (async function() {
+            try {
+                const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+                const { SUPABASE_CONFIG } = await import("./config/credentials.js");
+                
+                const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+                
+                // Immediate session check before page renders
+                const { data: { session }, error } = await supabase.auth.getSession();
+                
+                if (!session || error) {
+                    // No valid session - redirect immediately
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    window.location.replace("Log In.html");
+                    return;
+                }
+                
+                // Store user data for quick access
+                const user = session.user;
+                localStorage.setItem("userFullName", user.user_metadata?.full_name || "");
+                localStorage.setItem("userEmail", user.email);
+                
+                // Show page immediately
                 const loader = document.getElementById('authLoader');
                 if (loader) loader.style.display = 'none';
                 document.body.classList.remove('loading');
                 document.body.classList.add('loaded');
                 
-                // Update welcome message with user's name
-                const welcomeMessageEl = document.getElementById("welcomeMessage");
-                if (welcomeMessageEl) {
-                    const displayName = user.user_metadata?.full_name || user.email.split('@')[0];
-                    welcomeMessageEl.textContent = `Welcome, ${displayName}`;
+                // Update welcome message with user's name after DOM loads
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', updateWelcome);
+                } else {
+                    updateWelcome();
                 }
-            });
-        } catch (error) {
-            console.error('Auth check failed:', error);
-            // Show page anyway to prevent blank screen (will redirect from auth.js)
-            document.body.classList.remove('loading');
-            document.body.classList.add('loaded');
-            const loader = document.getElementById('authLoader');
-            if (loader) loader.style.display = 'none';
-        }
+                
+                function updateWelcome() {
+                    const welcomeMessageEl = document.getElementById("welcomeMessage");
+                    if (welcomeMessageEl) {
+                        const displayName = user.user_metadata?.full_name || user.email.split('@')[0];
+                        welcomeMessageEl.textContent = `Welcome, ${displayName}`;
+                    }
+                }
+            } catch (error) {
+                console.error('Auth check failed:', error);
+                // Show page anyway to prevent blank screen
+                document.body.classList.remove('loading');
+                document.body.classList.add('loaded');
+                const loader = document.getElementById('authLoader');
+                if (loader) loader.style.display = 'none';
+                
+                // If auth completely fails, redirect after showing error
+                setTimeout(() => {
+                    if (!localStorage.getItem('userEmail')) {
+                        window.location.replace("Log In.html");
+                    }
+                }, 1000);
+            }
+        })();
     </script>
     
     <!-- External CSS -->
@@ -101,6 +124,25 @@
     <div id="modals"></div>
 
     <!-- Main Application Script -->
-    <script type="module" src="scripts/main.js"></script>
+    <script type="module">
+        console.log('📦 Loading main application script...');
+        import('./scripts/main.js')
+            .then(() => console.log('✅ Main script loaded successfully'))
+            .catch(err => {
+                console.error('❌ Failed to load main script:', err);
+                document.body.innerHTML = `
+                    <div style="display: flex; align-items: center; justify-center; height: 100vh; padding: 2rem; font-family: system-ui;">
+                        <div style="text-align: center; max-width: 500px;">
+                            <h1 style="color: #dc2626; font-size: 1.5rem; margin-bottom: 1rem;">Failed to Load Application</h1>
+                            <p style="color: #6b7280; margin-bottom: 1rem;">Could not load the main application script.</p>
+                            <p style="color: #9ca3af; font-size: 0.875rem; margin-bottom: 1.5rem;">${err.message}</p>
+                            <button onclick="location.reload()" style="padding: 0.5rem 1rem; background: #eab308; border: none; border-radius: 0.5rem; cursor: pointer; font-weight: 500;">
+                                Reload Page
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+    </script>
 </body>
 </html>
