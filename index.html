@@ -13,14 +13,33 @@
         const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
         
         // Immediate session check before page renders
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
         
-        if (!session) {
+        if (!session || error) {
             // No valid session - redirect immediately
             localStorage.clear();
+            sessionStorage.clear();
             window.location.replace("Log In.html");
+            // Prevent further script execution
             throw new Error("Unauthorized access blocked");
         }
+        
+        // Store user data for quick access
+        const user = session.user;
+        localStorage.setItem("userFullName", user.user_metadata?.full_name || "");
+        localStorage.setItem("userEmail", user.email);
+        
+        // If session exists, show the page content and update welcome message
+        document.addEventListener('DOMContentLoaded', () => {
+            document.body.style.display = '';
+            
+            // Update welcome message with user's name
+            const welcomeMessageEl = document.getElementById("welcomeMessage");
+            if (welcomeMessageEl) {
+                const displayName = user.user_metadata?.full_name || user.email.split('@')[0];
+                welcomeMessageEl.textContent = `Welcome, ${displayName}`;
+            }
+        });
     </script>
     
     <!-- External CSS -->

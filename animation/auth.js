@@ -4,40 +4,47 @@ import { SUPABASE_CONFIG } from "../config/credentials.js";
 
 const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
 
-// Check authentication status on page load
+// Double-check authentication status on page load (redundant security layer)
 window.addEventListener("DOMContentLoaded", async () => {
     // Get current session from Supabase
     const { data: { session }, error } = await supabase.auth.getSession();
 
-    // If no valid session, redirect to login
+    // If no valid session, redirect to login (should never reach here due to inline check)
     if (!session || error) {
-        console.log("No valid session found. Redirecting to login...");
+        console.log("⚠️ No valid session found. Redirecting to login...");
         
         // Clear any stale localStorage data
-        localStorage.removeItem("userEmail");
-        localStorage.removeItem("userId");
-        localStorage.removeItem("userFullName");
-        localStorage.removeItem("userOfficeUnit");
-        localStorage.removeItem("isLoggedIn");
+        localStorage.clear();
+        sessionStorage.clear();
         
-        // Redirect to login page
-        window.location.href = "Log In.html";
+        // Force redirect to login page
+        window.location.replace("Log In.html");
         return;
     }
 
-    // Valid session exists - show page content
+    // Valid session exists - ensure page content is visible
     document.body.style.display = '';
     
-    // Update welcome message
+    // Store user data in localStorage for quick access
     const user = session.user;
+    localStorage.setItem("userEmail", user.email);
+    localStorage.setItem("userId", user.id);
+    localStorage.setItem("isLoggedIn", "true");
+    
+    if (user.user_metadata) {
+        localStorage.setItem("userFullName", user.user_metadata.full_name || "");
+        localStorage.setItem("userOfficeUnit", user.user_metadata.office_unit || "");
+    }
+    
+    // Update welcome message with user's full name
     const welcomeMessageEl = document.getElementById("welcomeMessage");
-
     if (welcomeMessageEl) {
-        const displayName = user.user_metadata?.full_name || user.email;
+        const displayName = user.user_metadata?.full_name || user.email.split('@')[0];
         welcomeMessageEl.textContent = `Welcome, ${displayName}`;
     }
 
     console.log("✅ User authenticated:", user.email);
+    console.log("👤 Display name:", user.user_metadata?.full_name || user.email.split('@')[0]);
 });
 
 // Listen for auth state changes (logout, token expiration, etc.)
