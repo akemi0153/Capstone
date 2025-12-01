@@ -1,0 +1,7 @@
+node_modules
+.git
+.vscode
+*.md
+!README.md
+*.log
+.DS_Store

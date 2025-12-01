@@ -236,12 +236,46 @@
       });
 
       if (error) {
-        Swal.fire({
-          icon: "error",
-          title: "Login Failed",
-          text: error.message || "Invalid email or password.",
-          confirmButtonColor: "#FFD700",
-        });
+        // Check if it's an email not confirmed error
+        if (error.message.includes('Email not confirmed') || error.message.includes('email_not_confirmed')) {
+          Swal.fire({
+            icon: "warning",
+            title: "Email Not Verified",
+            html: `
+              <p class="mb-3">Please verify your email address before logging in.</p>
+              <p class="text-sm text-gray-600">Check your inbox for the confirmation link.</p>
+            `,
+            confirmButtonColor: "#FFD700",
+            confirmButtonText: "Open Gmail",
+            showCancelButton: true,
+            cancelButtonText: "Resend Link",
+            cancelButtonColor: "#6b7280"
+          }).then((result) => {
+            if (result.isConfirmed) {
+              window.open('https://mail.google.com', '_blank');
+            } else if (result.dismiss === Swal.DismissReason.cancel) {
+              // Resend confirmation email
+              supabase.auth.resend({
+                type: 'signup',
+                email: email
+              }).then(() => {
+                Swal.fire({
+                  icon: 'success',
+                  title: 'Email Sent!',
+                  text: 'A new confirmation link has been sent to your email.',
+                  confirmButtonColor: '#FFD700'
+                });
+              });
+            }
+          });
+        } else {
+          Swal.fire({
+            icon: "error",
+            title: "Login Failed",
+            text: error.message || "Invalid email or password.",
+            confirmButtonColor: "#FFD700",
+          });
+        }
         return;
       }
 
